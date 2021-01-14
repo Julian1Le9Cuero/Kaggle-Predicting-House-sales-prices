@@ -1,0 +1,497 @@
+---
+title: "Predicting House Prices"
+author: "Julian Cuero"
+date: "13/1/2021"
+output: html_document
+---
+
+## {.tabset .tabset-fade}
+
+### Intro
+Ask a home buyer to describe their dream house, and they probably won't begin with the height of the basement ceiling or the proximity to an east-west railroad. But this playground competition's dataset proves that much more influences price negotiations than the number of bedrooms or a white-picket fence.
+
+With **79 explanatory variables** describing almost every aspect of residential homes in Ames, Iowa, this competition results useful to try to predict the final price of each home by attempting to get the
+most relevant features that influence the price.
+
+##### <span style="color:blue">Data fields</span>
+Here's a brief description of the data files (i.e. train and test sets):
+
+* **SalePrice** - the property's sale price in dollars. This is the target variable we're trying to predict.
+* **MSSubClass**: The building class
+* **MSZoning**: The general zoning classification
+* **LotFrontage**: Linear feet of street connected to property
+* **LotArea**: Lot size in square feet
+* **Street**: Type of road access
+* **Alley**: Type of alley access
+* **LotShape**: General shape of property
+* **LandContour**: Flatness of the property
+* **Utilities**: Type of utilities available
+* **LotConfig**: Lot configuration
+* **LandSlope**: Slope of property
+* **Neighborhood**: Physical locations within Ames city limits
+* **Condition1**: Proximity to main road or railroad
+* **Condition2**: Proximity to main road or railroad (if a second is present)
+* **BldgType**: Type of dwelling
+* **HouseStyle**: Style of dwelling
+* **OverallQual**: Overall material and finish quality
+* **OverallCond**: Overall condition rating
+* **YearBuilt**: Original construction date
+* **YearRemodAdd**: Remodel date
+* **RoofStyle**: Type of roof
+* **RoofMatl**: Roof material
+* **Exterior1st**: Exterior covering on house
+* **Exterior2nd**: Exterior covering on house (if more than one material)
+* **MasVnrType**: Masonry veneer type
+* **MasVnrArea**: Masonry veneer area in square feet
+* **ExterQual**: Exterior material quality
+* **ExterCond**: Present condition of the material on the exterior
+* **Foundation**: Type of foundation
+* **BsmtQual**: Height of the basement
+* **BsmtCond**: General condition of the basement
+* **BsmtExposure**: Walkout or garden level basement walls
+* **BsmtFinType1**: Quality of basement finished area
+* **BsmtFinSF1**: Type 1 finished square feet
+* **BsmtFinType2**: Quality of second finished area (if present)
+* **BsmtFinSF2**: Type 2 finished square feet
+* **BsmtUnfSF**: Unfinished square feet of basement area
+* **TotalBsmtSF**: Total square feet of basement area
+* **Heating**: Type of heating
+* **HeatingQC**: Heating quality and condition
+* **CentralAir**: Central air conditioning
+* **Electrical**: Electrical system
+* **1stFlrSF**: First Floor square feet
+* **2ndFlrSF**: Second floor square feet
+* **LowQualFinSF**: Low quality finished square feet (all floors)
+* **GrLivArea**: Above grade (ground) living area square feet
+* **BsmtFullBath**: Basement full bathrooms
+* **BsmtHalfBath**: Basement half bathrooms
+* **FullBath**: Full bathrooms above grade
+* **HalfBath**: Half baths above grade
+* **Bedroom**: Number of bedrooms above basement level
+* **Kitchen**: Number of kitchens
+* **KitchenQual**: Kitchen quality
+* **TotRmsAbvGrd**: Total rooms above grade (does not include bathrooms)
+* **Functional**: Home functionality rating
+* **Fireplaces**: Number of fireplaces
+* **FireplaceQu**: Fireplace quality
+* **GarageType**: Garage location
+* **GarageYrBlt**: Year garage was built
+* **GarageFinish**: Interior finish of the garage
+* **GarageCars**: Size of garage in car capacity
+* **GarageArea**: Size of garage in square feet
+* **GarageQual**: Garage quality
+* **GarageCond**: Garage condition
+* **PavedDrive**: Paved driveway
+* **WoodDeckSF**: Wood deck area in square feet
+* **OpenPorchSF**: Open porch area in square feet
+* **EnclosedPorch**: Enclosed porch area in square feet
+* **3SsnPorch**: Three season porch area in square feet
+* **ScreenPorch**: Screen porch area in square feet
+* **PoolArea**: Pool area in square feet
+* **PoolQC**: Pool quality
+* **Fence**: Fence quality
+* **MiscFeature**: Miscellaneous feature not covered in other categories
+* **MiscVal**: $Value of miscellaneous feature
+* **MoSold**: Month Sold
+* **YrSold**: Year Sold
+* **SaleType**: Type of sale
+* **SaleCondition**: Condition of sale
+
+##### **Major Findings**
+The order of the predictive accuracy by model on test set based on Kaggle score was in the following order:
+**SVR** > **Cluster-Then-Predict** > **Random Forest** > **CART** > **Multiple Linear Regression**.
+
+
+Competition link: <https://www.kaggle.com/c/house-prices-advanced-regression-techniques/overview>
+
+### Data preprocessing
+##### <span style="color:blue">Loading the data</span>
+```{r cache=TRUE}
+train <- read.csv('train.csv', stringsAsFactors = TRUE)
+test <- read.csv('test.csv', stringsAsFactors = TRUE)
+```
+
+
+```{r}
+# Helper function to make submissions
+submit <- function(predictions, num = 1){
+    df <- data.frame(Id=test$Id, SalePrice=predictions)
+    filename <- paste("submit", as.character(num), ".csv", sep="")
+    write.csv(df, filename, row.names = FALSE)
+}
+```
+
+##### Check proportion of NAs by column - **If greater than 0.4 remove feature**.
+
+**Columns removed**: `Alley`, `PoolQC`, `Fence`, `MiscFeature` and `FireplaceQu`.
+```{r}
+cols_to_remove <- colnames(train)[which(colMeans(is.na(train)) > .4)]
+train_set <- train[, !names(train) %in% cols_to_remove]
+cols_to_remove
+```
+
+Perform same operation on the test set.
+```{r}
+test_set <- test[, !names(test) %in% cols_to_remove]
+```
+
+Remove `Id` column since it's just an identifier.
+```{r}
+train_set <- train_set[,-1]
+test_set <- test_set[,-1]
+```
+
+Also get rid of the `Utilities` variable since almost all its values are the same. Just by look at the proportion of its possible values we can confirm this.
+```{r warning=FALSE}
+library(knitr)
+kable(prop.table(table(train_set$Utilities)))
+kable(prop.table(table(test_set$Utilities)))
+train_set <- subset(train_set, select = -c(Utilities))
+test_set <- subset(test_set, select = -c(Utilities))
+```
+
+Remove near zero variance columns
+```{r message=FALSE, warning=FALSE}
+library(caret)
+near_zero_v <- nearZeroVar(train_set, saveMetrics = TRUE)
+# Get names of nzvcolumns so they can also be removed from test set
+nzv_cols <- rownames(near_zero_v)[near_zero_v$nzv]
+train_set <- train_set[, !names(train_set) %in% nzv_cols]
+test_set <- test_set[, !names(test_set) %in% nzv_cols]
+```
+
+**Impute missing values** given that the **maximum proportion of NAs by column is about 17.7% after removing the previous columns**.
+```{r}
+# Get columns that contain NAs
+col_na.train <- train_set[which(colMeans(is.na(train_set)) > 0)]
+col_na.test <- test_set[which(colMeans(is.na(test_set)) > 0)]
+```
+
+```{r message=FALSE, cache=TRUE, results=FALSE, warning=FALSE}
+library(mice)
+# Deal with NAs using a decision tree (CART) method.
+set.seed(1004)
+imputed.train <- complete(mice(col_na.train, method = "cart"))
+imputed.test <- complete(mice(col_na.test, method = "cart"))
+```
+
+Replace train and test sets columns with imputed values.
+```{r}
+for(col in colnames(imputed.train)){
+    train_set[, col] <- imputed.train[, col]
+}
+
+for(col in colnames(imputed.test)){
+    test_set[, col] <- imputed.test[, col]
+}
+```
+
+### Exploratory Data Analysis
+```{r message=FALSE}
+library(ggplot2)
+library(dplyr)
+```
+
+```{r}
+col_types <- sapply(1:ncol(train_set), function(n) class(train_set[,n]))
+```
+
+Check correlation with outcome variable for numeric columns
+```{r}
+train_numeric <- train_set[, which(!col_types %in% c("character", "factor"))]
+```
+
+**Get columns that have correlation greater than 0.15 with outcome**.
+```{r}
+corrs <- sapply(1:ncol(train_numeric[,-29]), function(n){
+    cor(train_numeric[,n], train_numeric$SalePrice)
+})
+```
+
+Get variables to **fit linear regression**.
+```{r}
+trainReg <- train_set[, !names(train_set) %in% names(train_numeric)[which(abs(corrs) < 0.15)]]
+trainReg$SalePrice <- NULL
+predictors_corr <- cor(trainReg[, which(sapply(trainReg, class) != "factor")])
+```
+
+<span style="color:blue">Remove correlated predictors</span> - **The cutoff or threshold to remove them will be 0.7**.
+```{r message=FALSE, warning=FALSE}
+library(reshape2)
+melted_predictors_corr <- melt(predictors_corr)
+```
+
+```{r}
+melted_predictors_corr %>% ggplot(aes(Var1, Var2, fill=value)) +
+    geom_tile() + xlab(element_blank()) + ylab(element_blank()) +
+    scale_fill_gradient2(name='Correlation', low = "blue", mid="white",
+                         high="red", limit=c(-1,1)) +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.2))
+```
+
+Find the independent variables that surpass the cutoff.
+```{r}
+highlyCorPred <- findCorrelation(predictors_corr, cutoff = 0.7)
+rownames(predictors_corr)[highlyCorPred]
+```
+
+### Modeling {.tabset .tabset-fade .tabset-pills}
+#### Multiple linear regression
+##### <span style="color:blue">Selecting the final variables before fitting the linear regression</span>
+Although `findCorrelation` suggested the four previous columns that were correlated with another one, I'll keep the ones that make more sense for the price of a house or that are easier to interpret. For example, I find more relevant to keep the year in which the house was built (`YearBuilt`) rather than the year that the house garage was built (`GarageYrBlt`). **A similar reasoning was applied for the other three correlated predictors**. 
+```{r}
+trainReg <- select(trainReg, -c(TotRmsAbvGrd, GarageCars,
+                                TotalBsmtSF, GarageYrBlt))
+testReg <- test_set[, names(trainReg)]
+```
+
+<span style="color:blue">Normalize data</span>
+```{r}
+preproc <- preProcess(trainReg)
+trainReg.norm <- predict(preproc, trainReg)
+testReg.norm <- predict(preproc, testReg)
+# Add response variable again
+trainReg.norm$SalePrice <- train_set$SalePrice
+```
+
+* **R squared** ~= 0.8851
+* **Adjusted** ~= 0.8703
+```{r}
+linear_reg <- lm(SalePrice ~ ., data = trainReg.norm)
+rsq <- summary(linear_reg)$r.squared
+rsq_adj <- summary(linear_reg)$adj.r.squared
+kable(data.frame(rsq, rsq_adj))
+```
+
+Helper function to compute the *Root Mean Squared Error (RMSE)* based on logarithms of prices. The log is useful because mistakes on the expensive houses will get the same penalty as cheaper ones.
+```{r}
+getRMSE <- function(pred, label){
+    sqrt(mean((log(pred) - log(label))^2))
+}
+```
+
+##### <span style="color:blue">Multiple linear regression</span> - **RMSE on train set** = **0.1326157**.
+```{r}
+getRMSE(predict(linear_reg), trainReg.norm$SalePrice)
+```
+
+##### <span style="color:blue">Model diagnostics</span>
+**Constant residuals normally distributed and centered at zero.**
+```{r}
+hist(linear_reg$residuals, breaks = 20, xlab = "Residuals", ylab="Frequency", main="Residuals histogram")
+```
+
+The **mean and median are pretty close to each other**.
+```{r}
+mean(linear_reg$residuals)
+median(linear_reg$residuals)
+```
+
+**Constant variability (homocedasticity)**
+Residuals seem to behave in a fan-shaped manner but there is a big group that seems to be center at zero.
+```{r}
+linear_reg %>% ggplot(aes(x=.fitted,y=.resid)) + geom_point(alpha = 0.3) +
+    geom_hline(yintercept = 0, linetype="dashed") +
+    xlab("Fitted values") +
+    ylab("Residuals")
+```
+
+**Colinearity** among predictors was already checked (with correlation matrix) so it's time to make predictions.
+```{r warning=FALSE}
+preds.linear_reg <- predict(linear_reg, testReg.norm)
+```
+
+First submission to Kaggle.
+```{r}
+submit(preds.linear_reg, 1)
+```
+
+#### Regression tree
+##### <span style="color:blue">Fitting CART model</span>
+```{r message=FALSE, warning=FALSE}
+library(rpart)
+library(rpart.plot)
+houseTree <- rpart(SalePrice ~ ., data = train_set)
+```
+
+<span style="color:blue">Regression tree</span> - **RMSE** = **0.2172899**.
+```{r}
+getRMSE(predict(houseTree), train_set$SalePrice)
+```
+
+Perform **10-fold cross validation** to choose complexity parameter (cp) with 90% of train set.
+```{r}
+numFolds <- trainControl(method="cv", number = 10, p=0.9)
+cps <- expand.grid(.cp=seq(0.001, 0.2, 0.01))
+houseTree2 <- train(SalePrice ~ ., method='rpart', data = train_set,
+                    trControl=numFolds, tuneGrid=cps)
+houseTree2$bestTune
+```
+
+**Plotting RMSE vs CP**
+```{r}
+plot(houseTree2)
+```
+
+**Fit tree with tuned parameter**.
+```{r}
+tree <- rpart(SalePrice ~ ., data = train_set, cp=houseTree2$bestTune)
+rpart.plot(tree)
+```
+
+**RMSE decreased to 0.157749** with tuned parameter.
+```{r}
+getRMSE(predict(tree), train_set$SalePrice)
+```
+
+Make predictions
+```{r}
+preds.tree <- predict(tree, newdata = test_set)
+```
+
+Submit
+```{r}
+submit(preds.tree, 2)
+```
+
+#### Random forest Regression
+```{r message=FALSE, warning=FALSE}
+library(randomForest)
+set.seed(566)
+rf <- randomForest(SalePrice ~ ., data=train_set, importance=TRUE,
+                   nodesize=25, ntree=200)
+```
+
+Check importance of features according to `randomForest` (the higher the better).
+```{r}
+rf$importance
+```
+
+<span style="color:blue">Random forest</span> - **RMSE** = **0.1431867**.
+```{r}
+getRMSE(predict(rf), train_set$SalePrice)
+```
+
+Do this to fix error: "*numbers of columns of arguments do not match*". This is because factor variables in training set and test set have different levels.
+```{r}
+test_set <- rbind(train_set[1, -55] , test_set)
+test_set <- test_set[-1,]
+
+# Predict on test set and submit
+preds.rf <- predict(rf, test_set)
+submit(preds.rf, 3)
+```
+
+#### Support Vector Regression (SVR)
+```{r message=FALSE, warning=FALSE}
+library(e1071)
+
+svrReg <- svm(SalePrice ~ ., data=train_set, scale=TRUE,
+              type='eps-regression')
+```
+
+<span style="color:blue">SVR</span> - **RMSE** = **0.1043786**.
+```{r}
+getRMSE(predict(svrReg), train_set$SalePrice)
+```
+
+Predict and submit
+```{r}
+preds.svrReg <- predict(svrReg, test_set)
+submit(preds.svrReg, 4)
+```
+
+#### Cluster-Then-Predict
+##### <span style="color:blue">Regression for each cluster</span>
+Remove outcome from train set and normalize because variables
+with greater scales may have greater influence when computing distances.
+```{r}
+train_set_clust <- train_set[, -55]
+preproc2 <- preProcess(train_set_clust)
+train_set_clust <- predict(preproc2, train_set_clust)
+test_set_clust <- predict(preproc2, test_set)
+```
+
+Get numeric columns 
+```{r}
+train_set_clust.num <- train_set_clust[, which(sapply(train_set_clust, class) != 'factor')]
+test_set_clust.num <- test_set_clust[, which(sapply(test_set_clust, class) != 'factor')]
+```
+
+Calculate euclidean distance between each point
+```{r}
+distances <- dist(train_set_clust.num, method = "euclidean")
+```
+
+The **ward.D method minimizes the variance inside each cluster/group**.
+```{r}
+houseHclust <- hclust(distances, method='ward.D')
+```
+
+Looking at the dendogram it seems like **4 clusters would be a good choice**.
+```{r}
+plot(houseHclust, labels = FALSE)
+abline(h = 240, col="bisque2")
+```
+
+Pass numeric cols to `as.kcca` in order to make clusters for train and test sets.
+```{r warning=FALSE, message=FALSE, cache=TRUE}
+library(flexclust)
+hclustKcca <- as.kcca(houseHclust, data=train_set_clust.num, k=4)
+clusterTrain <- predict(hclustKcca)
+clusterTest <- predict(hclustKcca, newdata=test_set_clust.num)
+```
+
+Get the houses assigned to clusters 1, 2, 3 and 4 in training set.
+```{r}
+houseTrain1 <- subset(train_set, clusterTrain == 1)
+houseTrain2 <- subset(train_set, clusterTrain == 2)
+houseTrain3 <- subset(train_set, clusterTrain == 3)
+houseTrain4 <- subset(train_set, clusterTrain == 4)
+```
+
+Same for test set
+```{r}
+houseTest1 <- subset(test_set, clusterTest == 1)
+houseTest2 <- subset(test_set, clusterTest == 2)
+houseTest3 <- subset(test_set, clusterTest == 3)
+houseTest4 <- subset(test_set, clusterTest == 4)
+```
+
+**Fit SVR for each cluster**.
+```{r cache=TRUE}
+svm1 <- svm(SalePrice ~ ., data=houseTrain1, type='eps-regression')
+svm2 <- svm(SalePrice ~ ., data=houseTrain2, type='eps-regression')
+svm3 <- svm(SalePrice ~ ., data=houseTrain3, type='eps-regression')
+svm4 <- svm(SalePrice ~ ., data=houseTrain4, type='eps-regression')
+```
+
+Compute predictions
+```{r}
+predictTest1 <- predict(svm1, houseTest1)
+predictTest2 <- predict(svm2, houseTest2)
+predictTest3 <- predict(svm3, houseTest3)
+predictTest4 <- predict(svm4, houseTest4)
+```
+
+Join the four predictions
+```{r}
+AllPredictions <- c(predictTest1, predictTest2, predictTest3, predictTest4)
+```
+
+Fill predictions in the correct order from original test file
+```{r}
+final_predictions <- rep(0, nrow(test))
+
+for (row in as.numeric(names(AllPredictions))){
+    name <- as.character(row)
+    final_predictions[row] <- AllPredictions[name]
+}
+
+final_predictions <- final_predictions[2:1460]
+```
+
+Submit
+```{r}
+submit(final_predictions, 5)
+```
